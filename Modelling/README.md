@@ -1,4 +1,4 @@
-# Amyloid-DB — Machine Learning Pipeline (modeling_2)
+# Amyloid-DB — Machine Learning Pipeline
 
 Binary classification of amyloid/non-amyloid sequences using sequence-derived
 physicochemical and compositional features. Includes evidence-weighted training,
