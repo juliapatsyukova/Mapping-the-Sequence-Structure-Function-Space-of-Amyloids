@@ -1,0 +1,48 @@
+feature,importance,label
+phys_length,0.12478006752333229,Sequence length
+phys_molecular_weight,0.1207370714480071,Molecular weight
+phys_beta_propensity_mean,0.06901156386706392,β-sheet propensity (mean)
+phys_aggregation_propensity_mean,0.06385213840771452,Aggregation propensity (mean)
+comp_aa_V,0.056345504298228835,Val (V)
+phys_beta_propensity_max,0.05125052985417091,β-sheet propensity (max)
+phys_hydrophobicity_mean,0.05082582523551342,Hydrophobicity (mean)
+phys_hydrophobicity_max,0.04582924123636909,Hydrophobicity (max)
+phys_aliphatic_fraction,0.034891346755329726,Aliphatic fraction
+comp_aa_I,0.0337210535984438,Ile (I)
+phys_positive_residues,0.033628370010161314,Positive residues
+phys_aggregation_propensity_max,0.0297373017869828,Aggregation propensity (max)
+comp_aa_L,0.026500332062130448,Leu (L)
+phys_hydrophobicity_std,0.025269997399395127,Hydrophobicity (std)
+phys_aromatic_fraction,0.017857679193088265,Aromatic fraction
+phys_polar_fraction,0.016024268553539063,Polar fraction
+comp_aa_F,0.015409966414005064,Phe (F)
+phys_negative_residues,0.014939889445006179,Negative residues
+comp_aa_H,0.013526150463931725,His (H)
+comp_aa_N,0.013480853997295345,Asn (N)
+comp_small_fraction,0.01080166379280502,Small residue fraction
+comp_large_fraction,0.010740762823155971,Large residue fraction
+phys_hydrophobicity_min,0.010140554177768235,Hydrophobicity (min)
+phys_charge_density,0.00951124849502198,Charge density
+comp_aa_G,0.009480424834308221,Gly (G)
+phys_charged_fraction,0.009101606720403744,Charged fraction
+comp_tiny_fraction,0.008776412847694013,Tiny residue fraction
+comp_aa_K,0.007195719856013618,Lys (K)
+comp_aa_Y,0.007177640560734552,Tyr (Y)
+comp_aa_A,0.0062971076699054876,Ala (A)
+comp_aa_P,0.00621625894223694,Pro (P)
+comp_aa_Q,0.006081810445140321,Gln (Q)
+comp_aa_E,0.0060110546665848,Glu (E)
+comp_aa_T,0.005974229726369213,Thr (T)
+comp_aa_S,0.0056939066495941305,Ser (S)
+phys_net_charge,0.005285689486565533,Net charge
+comp_aa_M,0.0034641717945095444,Met (M)
+phys_has_proline,0.0034031495251007652,Has proline
+comp_aa_D,0.003357268028188828,Asp (D)
+comp_aa_R,0.002254819664859406,Arg (R)
+comp_aa_C,0.0014572961440870466,Cys (C)
+comp_dp_AA,0.0014170345522414446,Dipeptide AA
+comp_aa_W,0.0014025846739714523,Trp (W)
+phys_has_glycine_rich,0.0005837888056645323,Glycine-rich
+comp_dp_AQ,0.00021319732124825994,Dipeptide AQ
+comp_dp_QA,0.00019686332893199156,Dipeptide QA
+phys_has_polyq,0.00014458291718610024,Has polyQ run

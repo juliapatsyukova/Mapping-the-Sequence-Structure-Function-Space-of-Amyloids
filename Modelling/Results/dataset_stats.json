@@ -1,0 +1,19 @@
+{
+  "total_instances": 4348,
+  "instances_with_seq": 3991,
+  "instances_in_model": 3594,
+  "amyloid_positive": 1776,
+  "non_amyloid": 1818,
+  "amyloid_fraction": 0.4941569282136895,
+  "n_features": 47,
+  "train_size": 2515,
+  "val_size": 539,
+  "test_size": 540,
+  "mean_evidence_weight": 1.796883695047301,
+  "feature_groups": {
+    "Physicochemical": 21,
+    "AA composition": 20,
+    "Dipeptide": 3,
+    "Size fractions": 3
+  }
+}
