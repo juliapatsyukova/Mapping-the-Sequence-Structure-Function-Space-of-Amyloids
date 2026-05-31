@@ -134,8 +134,6 @@ score = model.predict_proba(X[features])[:, 1]  # amyloid_likeness_score
 | `permutation_importance.csv` | Permutation importance ± std for top features (validation set, 30 repeats) |
 | `top20_features.csv` | Top 20 features by Gini importance with human-readable names |
 | `predictions.csv` | Full dataset scores: `y_true`, `y_prob` (calibrated GB), `y_pred`, `weight`, `tier`, and raw probabilities for all 4 models |
-| `interpretation_notes.txt` | Plain-text summary of dataset, training strategy, key results, and limitations |
-| `figure_captions.md` | Full captions for all 16 plots |
 
 ### Plots (`plots/`)
 
