@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amyloid DB — Graph Explorer</title>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── TOP BAR ── */
+    #topbar {
+      background: #0f172a;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #1e293b;
+    }
+    #topbar h1 {
+      color: #e2e8f0;
+      font-size: 15px;
+      font-weight: 700;
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+    }
+    #topbar h1 span { color: #0D9488; }
+
+    #search-wrapper {
+      position: relative;
+      flex: 1;
+      max-width: 520px;
+    }
+    #search-input {
+      width: 100%;
+      padding: 8px 14px 8px 36px;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: #1e293b;
+      color: #f1f5f9;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #search-input::placeholder { color: #475569; }
+    #search-input:focus { border-color: #0D9488; }
+    #search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #475569;
+      pointer-events: none;
+    }
+
+    #autocomplete {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      display: none;
+    }
+    .ac-item {
+      padding: 9px 14px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      border-bottom: 1px solid #263245;
+    }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:hover, .ac-item.active { background: #0D9488; }
+    .ac-item:hover .ac-seq, .ac-item.active .ac-seq { color: #fff; }
+    .ac-item:hover .ac-meta, .ac-item.active .ac-meta { color: rgba(255,255,255,0.75); }
+    .ac-seq { font-family: 'Courier New', monospace; font-size: 12px; color: #cbd5e1; }
+    .ac-meta { font-size: 11px; color: #64748b; }
+
+    #focal-badge {
+      display: none;
+      background: #0D9488;
+      color: #fff;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── TAB BAR ── */
+    #tabbar {
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      flex-shrink: 0;
+      padding: 0 16px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 11px 18px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: #64748b;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: #0D9488; }
+    .tab-btn.active { color: #0D9488; border-bottom-color: #0D9488; }
+
+    /* ── MAIN AREA ── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #graph-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #cy {
+      width: 100%;
+      height: 100%;
+      background: #fff;
+    }
+
+    #empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      gap: 16px;
+      background: #fff;
+    }
+    #empty-state svg { width: 72px; height: 72px; opacity: 0.35; }
+    #empty-state p { font-size: 15px; }
+
+    #no-data-state {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      gap: 10px;
+      background: #fff;
+    }
+    #no-data-state p { font-size: 14px; }
+
+    /* ── PROPERTIES PANEL ── */
+    #props-panel {
+      display: none;
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+      background: #f8fafc;
+      position: absolute;
+      inset: 0;
+    }
+
+    .props-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .props-title .uniprot-tag {
+      font-size: 13px;
+      background: #eff6ff;
+      color: #2563eb;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+
+    .props-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      gap: 14px;
+      max-width: 1200px;
+    }
+    .props-grid .span2 { grid-column: span 2; }
+
+    .prop-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .prop-card h3 {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .badge-amyloid    { background: #fef2f2; color: #dc2626; }
+    .badge-non-amyloid { background: #f0fdf4; color: #16a34a; }
+    .badge-unknown    { background: #f1f5f9; color: #64748b; }
+    .badge-neutral    { background: #eff6ff; color: #1d4ed8; }
+    .badge-high       { background: #fefce8; color: #92400e; }
+
+    .progress-wrap { margin-top: 6px; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 4px; }
+    .progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #0D9488; border-radius: 4px; transition: width 0.6s ease; }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      font-size: 13px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: #64748b; }
+    .stat-value { font-weight: 600; color: #1e293b; text-align: right; max-width: 60%; word-break: break-word; }
+
+    .props-seq {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      padding: 12px 14px;
+      border-radius: 6px;
+      word-break: break-all;
+      line-height: 1.7;
+      color: #334155;
+    }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      width: 290px;
+      min-width: 290px;
+      background: #fff;
+      border-left: 1px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.2s, min-width 0.2s;
+    }
+    #sidebar.hidden { width: 0; min-width: 0; border-left: none; }
+
+    #sidebar-header {
+      padding: 12px 14px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #sidebar-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    #sidebar-close {
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 16px;
+      border: none;
+      background: none;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    #sidebar-close:hover { background: #f1f5f9; color: #475569; }
+
+    #sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 14px 16px;
+    }
+
+    .kv-row {
+      padding: 6px 0;
+      border-bottom: 1px solid #f8fafc;
+    }
+    .kv-row:last-child { border-bottom: none; }
+    .kv-key {
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .kv-val {
+      font-size: 13px;
+      color: #334155;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+    .kv-val.mono { font-family: 'Courier New', monospace; font-size: 11px; }
+
+    /* ── LOADING OVERLAY ── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      color: #94a3b8;
+      gap: 18px;
+    }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 3px solid #1e293b;
+      border-top-color: #0D9488;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { font-size: 14px; }
+    #loading .sub { font-size: 12px; color: #475569; }
+
+    /* ── GRAPH LEGEND ── */
+    #legend {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 11px;
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    #legend.visible { display: flex; }
+    .legend-item { display: flex; align-items: center; gap: 6px; color: #475569; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── GRAPH CONTROLS ── */
+    #graph-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ctrl-btn {
+      width: 32px; height: 32px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.95);
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .ctrl-btn:hover { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Loading Amyloid database…</p>
+  <p class="sub" id="loading-sub">Parsing nodes…</p>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>Amyloid<span>DB</span></h1>
+  <div id="search-wrapper">
+    <svg id="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input id="search-input" type="text" placeholder="Search sequence or UniProt ID…" autocomplete="off" spellcheck="false" disabled>
+    <div id="autocomplete"></div>
+  </div>
+  <div id="focal-badge"></div>
+</div>
+
+<!-- TAB BAR -->
+<div id="tabbar">
+  <button class="tab-btn active" data-tab="methods">Methods</button>
+  <button class="tab-btn" data-tab="databases">Databases</button>
+  <button class="tab-btn" data-tab="properties">Properties</button>
+  <button class="tab-btn" data-tab="proteins">Proteins</button>
+  <button class="tab-btn" data-tab="structures">Structures</button>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="graph-container">
+
+    <!-- Cytoscape canvas -->
+    <div id="cy"></div>
+
+    <!-- Empty state -->
+    <div id="empty-state">
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="24" cy="24" r="10"/>
+        <circle cx="50" cy="18" r="7"/>
+        <circle cx="44" cy="48" r="8"/>
+        <circle cx="14" cy="46" r="6"/>
+        <line x1="34" y1="24" x2="43" y2="21"/>
+        <line x1="26" y1="33" x2="40" y2="42"/>
+        <line x1="20" y1="33" x2="16" y2="40"/>
+      </svg>
+      <p>Search for a sequence or UniProt ID to start exploring.</p>
+    </div>
+
+    <!-- No data for this tab -->
+    <div id="no-data-state">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <p id="no-data-msg">No data available for this tab.</p>
+    </div>
+
+    <!-- Properties panel -->
+    <div id="props-panel"></div>
+
+    <!-- Legend -->
+    <div id="legend"></div>
+
+    <!-- Controls -->
+    <div id="graph-controls">
+      <button class="ctrl-btn" id="btn-fit" title="Fit graph">⊡</button>
+      <button class="ctrl-btn" id="btn-zoom-in" title="Zoom in">+</button>
+      <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
+    </div>
+  </div>
+
+  <!-- Right sidebar -->
+  <div id="sidebar" class="hidden">
+    <div id="sidebar-header">
+      <span id="sidebar-title">Node</span>
+      <button id="sidebar-close" title="Close">✕</button>
+    </div>
+    <div id="sidebar-body"></div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+//  STATE
+// ================================================================
+const nodesMap  = {};   // node_id → { node_type, attrs }
+const outEdges  = {};   // source_id → [{ target, type, attrs }]
+const inEdges   = {};   // target_id → [{ source, type, attrs }]
+const seqIndex  = [];   // [{ id, sequence, uniprot_id }] — for autocomplete
+
+let focalNodeId  = null;
+let currentTab   = 'methods';
+let cy           = null;
+
+// ================================================================
+//  DATA LOADING
+// ================================================================
+async function loadData() {
+  const [nodesText, edgesText] = await Promise.all([
+    fetch('graph_nodes.csv').then(r => {
+      if (!r.ok) throw new Error(`Cannot load graph_nodes.csv (${r.status})`);
+      return r.text();
+    }),
+    fetch('graph_edges.csv').then(r => {
+      if (!r.ok) throw new Error(`Cannot load graph_edges.csv (${r.status})`);
+      return r.text();
+    }),
+  ]);
+
+  document.getElementById('loading-sub').textContent = 'Parsing nodes…';
+  const nRes = Papa.parse(nodesText, { header: true, skipEmptyLines: true });
+  for (const row of nRes.data) {
+    const { node_id, node_type, attributes_json } = row;
+    let attrs = {};
+    try { attrs = JSON.parse(attributes_json); } catch (_) {}
+    nodesMap[node_id] = { node_type, attrs };
+
+    if (node_type === 'SequenceInstance') {
+      seqIndex.push({
+        id: node_id,
+        sequence: attrs.sequence || '',
+        uniprot_id: attrs.uniprot_id || '',
+        protein_name: attrs.protein_name || '',
+        display: attrs.name || attrs.protein_name || attrs.uniprot_id || attrs.sequence || '',
+      });
+    }
+  }
+
+  document.getElementById('loading-sub').textContent = 'Parsing edges…';
+  const eRes = Papa.parse(edgesText, { header: true, skipEmptyLines: true });
+  for (const row of eRes.data) {
+    const { source, target, relation_type, attributes_json } = row;
+    let attrs = {};
+    try { attrs = JSON.parse(attributes_json); } catch (_) {}
+
+    if (!outEdges[source]) outEdges[source] = [];
+    outEdges[source].push({ target, type: relation_type, attrs });
+
+    if (!inEdges[target]) inEdges[target] = [];
+    inEdges[target].push({ source, type: relation_type, attrs });
+  }
+}
+
+// ================================================================
+//  LABEL & COLOR HELPERS
+// ================================================================
+function nodeLabel(id, node_type, attrs) {
+  if (attrs.name) return attrs.name;
+  switch (node_type) {
+    case 'SequenceInstance': {
+      const s = attrs.sequence || '';
+      if (!s) return id.slice(4, 16);
+      return s.length > 15 ? s.slice(0, 12) + '…' : s;
+    }
+    case 'Protein':         return attrs.uniprot_id || id;
+    case 'ExperimentMethod':return attrs.method_universal || id;
+    case 'SourceDatabase':  return attrs.source_db || id;
+    case 'Structure':       return attrs.pdb_id || attrs.emdb_id || id;
+    case 'Publication': {
+      const doi = (attrs.doi || '').replace(/https?:\/\/doi\.org\//i, '');
+      if (doi) return doi.length > 22 ? doi.slice(0, 20) + '…' : doi;
+      return attrs.pmid || id;
+    }
+    case 'Observation':
+      return (attrs.source_db || '') + (attrs.experimental_label ? ' | ' + attrs.experimental_label : '');
+    default: return id;
+  }
+}
+
+const TYPE_COLORS = {
+  SequenceInstance_focal:  '#0D9488',
+  SequenceInstance_sibling:'#5EEAD4',
+  SequenceInstance:        '#5EEAD4',
+  ExperimentMethod:        '#F59E0B',
+  SourceDatabase:          '#8B5CF6',
+  Observation:             '#3B82F6',
+  Protein:                 '#F43F5E',
+  Structure:               '#64748B',
+  Publication:             '#22C55E',
+};
+
+function nodeColor(node_type, isFocal) {
+  if (isFocal) return TYPE_COLORS.SequenceInstance_focal;
+  return TYPE_COLORS[node_type] || '#94A3B8';
+}
+
+// ================================================================
+//  CYTOSCAPE INIT
+// ================================================================
+function initCy() {
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color':   'data(color)',
+          'label':              'data(label)',
+          'font-size':          '11px',
+          'text-valign':        'bottom',
+          'text-halign':        'center',
+          'text-margin-y':      '5px',
+          'color':              '#1e293b',
+          'text-outline-color': '#ffffff',
+          'text-outline-width': '2px',
+          'width':              'data(size)',
+          'height':             'data(size)',
+          'border-width':       'data(bw)',
+          'border-color':       'data(bc)',
+          'z-index':            1,
+        }
+      },
+      {
+        selector: 'node.focal',
+        style: {
+          'font-size':    '12px',
+          'font-weight':  'bold',
+          'text-wrap':    'wrap',
+          'text-max-width':'80px',
+          'z-index':      10,
+        }
+      },
+      {
+        selector: 'node.highlighted',
+        style: {
+          'border-width':   4,
+          'border-color':   '#F59E0B',
+          'overlay-color':  '#F59E0B',
+          'overlay-opacity': 0.12,
+          'overlay-padding': 6,
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width':                  1.5,
+          'line-color':             '#cbd5e1',
+          'target-arrow-color':     '#cbd5e1',
+          'target-arrow-shape':     'triangle',
+          'curve-style':            'bezier',
+          'opacity':                0.75,
+          'label':                  '',
+          'font-size':              '10px',
+          'color':                  '#64748b',
+          'text-background-color':  '#fff',
+          'text-background-opacity': 1,
+          'text-background-padding': '2px',
+          'text-rotation':          'autorotate',
+        }
+      },
+      {
+        selector: 'edge.show-label',
+        style: { 'label': 'data(label)' }
+      },
+      {
+        selector: 'edge:selected',
+        style: {
+          'label':              'data(label)',
+          'line-color':         '#0D9488',
+          'target-arrow-color': '#0D9488',
+          'opacity':            1,
+          'width':              2.5,
+        }
+      },
+    ],
+    layout: { name: 'preset' },
+    userZoomingEnabled:  true,
+    userPanningEnabled:  true,
+    boxSelectionEnabled: false,
+  });
+
+  cy.on('tap', 'node', evt => {
+    cy.nodes().removeClass('highlighted');
+    evt.target.addClass('highlighted');
+    showSidebar(evt.target.data('nodeId'), evt.target.data('nodeType'));
+  });
+
+  cy.on('tap', evt => {
+    if (evt.target === cy) cy.nodes().removeClass('highlighted');
+  });
+
+  cy.on('mouseover', 'edge', evt => evt.target.addClass('show-label'));
+  cy.on('mouseout',  'edge', evt => evt.target.removeClass('show-label'));
+
+  document.getElementById('btn-fit').addEventListener('click', () => cy.fit(cy.elements(), 60));
+  document.getElementById('btn-zoom-in').addEventListener('click',  () => cy.zoom(cy.zoom() * 1.25));
+  document.getElementById('btn-zoom-out').addEventListener('click', () => cy.zoom(cy.zoom() * 0.8));
+}
+
+// ================================================================
+//  ELEMENT BUILDERS
+// ================================================================
+let _edgeCounter = 0;
+
+function buildElements(tab) {
+  if (!focalNodeId || !nodesMap[focalNodeId]) return { elements: [], legend: [] };
+
+  const elements = [];
+  const addedNodes = new Set();
+  const addedEdges = new Set();
+  _edgeCounter = 0;
+
+  function addNode(id, isFocal, sizeOverride) {
+    if (addedNodes.has(id)) return;
+    const node = nodesMap[id];
+    if (!node) return;
+    addedNodes.add(id);
+    const { node_type, attrs } = node;
+    const focal = isFocal === true;
+    elements.push({
+      data: {
+        id,
+        label:    nodeLabel(id, node_type, attrs),
+        nodeId:   id,
+        nodeType: node_type,
+        color:    nodeColor(node_type, focal),
+        size:     sizeOverride || (focal ? 62 : 38),
+        bw:       focal ? 3 : 1.5,
+        bc:       focal ? '#0f766e' : '#94a3b8',
+      },
+      classes: focal ? 'focal' : '',
+    });
+  }
+
+  function addEdge(src, tgt, label) {
+    const key = `${src}|${tgt}|${label}`;
+    if (addedEdges.has(key)) return;
+    addedEdges.add(key);
+    elements.push({ data: { id: `e${++_edgeCounter}`, source: src, target: tgt, label } });
+  }
+
+  addNode(focalNodeId, true);
+
+  const legendItems = [];
+
+  switch (tab) {
+
+    // ── METHODS ──────────────────────────────────────────────
+    case 'methods': {
+      const edges = (outEdges[focalNodeId] || []).filter(e => e.type === 'SUPPORTED_BY');
+      for (const e of edges) {
+        addNode(e.target);
+        const lbl = e.attrs.evidence_weight ? `weight: ${e.attrs.evidence_weight}` : 'SUPPORTED_BY';
+        addEdge(focalNodeId, e.target, lbl);
+      }
+      legendItems.push(
+        { color: TYPE_COLORS.SequenceInstance_focal,  label: 'Focal sequence' },
+        { color: TYPE_COLORS.ExperimentMethod,         label: 'Experiment method' },
+      );
+      break;
+    }
+
+    // ── DATABASES ─────────────────────────────────────────────
+    case 'databases': {
+      // Direct OBSERVED_IN: seq → db
+      for (const e of (outEdges[focalNodeId] || []).filter(e => e.type === 'OBSERVED_IN')) {
+        addNode(e.target);
+        addEdge(focalNodeId, e.target, 'OBSERVED_IN');
+      }
+      // Observations: obs –OBSERVED_AS→ seq, obs –FROM_SOURCE→ db
+      for (const ie of (inEdges[focalNodeId] || []).filter(e => e.type === 'OBSERVED_AS')) {
+        const obsId = ie.source;
+        addNode(obsId);
+        addEdge(obsId, focalNodeId, 'OBSERVED_AS');
+        for (const fe of (outEdges[obsId] || []).filter(e => e.type === 'FROM_SOURCE')) {
+          addNode(fe.target);
+          addEdge(obsId, fe.target, 'FROM_SOURCE');
+        }
+      }
+      legendItems.push(
+        { color: TYPE_COLORS.SequenceInstance_focal, label: 'Focal sequence' },
+        { color: TYPE_COLORS.Observation,            label: 'Observation' },
+        { color: TYPE_COLORS.SourceDatabase,         label: 'Source database' },
+      );
+      break;
+    }
+
+    // ── PROTEINS ──────────────────────────────────────────────
+    case 'proteins': {
+      for (const e of (outEdges[focalNodeId] || []).filter(e => e.type === 'PART_OF')) {
+        addNode(e.target);
+        addEdge(focalNodeId, e.target, 'PART_OF');
+        // Sibling sequences sharing this protein
+        const siblings = (inEdges[e.target] || [])
+          .filter(ie => ie.type === 'PART_OF' && ie.source !== focalNodeId)
+          .slice(0, 5);
+        for (const sib of siblings) {
+          addNode(sib.source, false, 32); // smaller size for siblings
+          addEdge(sib.source, e.target, 'PART_OF');
+        }
+      }
+      legendItems.push(
+        { color: TYPE_COLORS.SequenceInstance_focal,   label: 'Focal sequence' },
+        { color: TYPE_COLORS.Protein,                  label: 'Protein' },
+        { color: TYPE_COLORS.SequenceInstance_sibling, label: 'Sibling sequence' },
+      );
+      break;
+    }
+
+    // ── STRUCTURES ────────────────────────────────────────────
+    case 'structures': {
+      for (const e of (outEdges[focalNodeId] || []).filter(e => e.type === 'HAS_STRUCTURE')) {
+        addNode(e.target);
+        addEdge(focalNodeId, e.target, 'HAS_STRUCTURE');
+        // CITED_IN from structure (if present in data)
+        for (const ce of (outEdges[e.target] || []).filter(ce => ce.type === 'CITED_IN')) {
+          addNode(ce.target);
+          addEdge(e.target, ce.target, 'CITED_IN');
+        }
+      }
+      // REPORTED_IN publications from focal seq
+      for (const e of (outEdges[focalNodeId] || []).filter(e => e.type === 'REPORTED_IN')) {
+        addNode(e.target);
+        addEdge(focalNodeId, e.target, 'REPORTED_IN');
+      }
+      legendItems.push(
+        { color: TYPE_COLORS.SequenceInstance_focal, label: 'Focal sequence' },
+        { color: TYPE_COLORS.Structure,              label: 'Structure (PDB/EMDB)' },
+        { color: TYPE_COLORS.Publication,            label: 'Publication' },
+      );
+      break;
+    }
+
+    default: break;
+  }
+
+  return { elements, legend: legendItems };
+}
+
+// ================================================================
+//  LAYOUT
+// ================================================================
+function getConcentricWeight(node, tab) {
+  if (node.hasClass('focal')) return 100;
+  const t = node.data('nodeType');
+  switch (tab) {
+    case 'databases':
+      if (t === 'Observation') return 50;
+      if (t === 'SourceDatabase') return 10;
+      return 10;
+    case 'proteins':
+      if (t === 'Protein') return 50;
+      if (t === 'SequenceInstance') return 10;
+      return 10;
+    case 'structures':
+      if (t === 'Structure') return 50;
+      if (t === 'Publication') return 10;
+      return 10;
+    default: return 10;
+  }
+}
+
+function runLayout(elements, tab) {
+  cy.elements().remove();
+  if (elements.length === 0) return;
+  cy.add(elements);
+
+  if (cy.nodes().length <= 1) {
+    cy.nodes().first().position({ x: 300, y: 300 });
+    cy.fit();
+    return;
+  }
+
+  cy.layout({
+    name:           'concentric',
+    concentric:     node => getConcentricWeight(node, tab),
+    levelWidth:     () => 12,
+    minNodeSpacing: 45,
+    padding:        80,
+    startAngle:     (Math.PI * 3) / 2,
+    animate:        true,
+    animationDuration: 450,
+    animationEasing:   'ease-out',
+  }).run();
+
+  setTimeout(() => cy.fit(cy.elements(), 60), 500);
+}
+
+// ================================================================
+//  LEGEND
+// ================================================================
+function renderLegend(items) {
+  const el = document.getElementById('legend');
+  if (!items || items.length === 0) { el.classList.remove('visible'); return; }
+  el.innerHTML = items.map(({ color, label }) =>
+    `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${label}</div>`
+  ).join('');
+  el.classList.add('visible');
+}
+
+// ================================================================
+//  TAB RENDERING
+// ================================================================
+function renderTab(tab) {
+  currentTab = tab;
+
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+
+  const emptyState = document.getElementById('empty-state');
+  const noDataState = document.getElementById('no-data-state');
+  const propsPanel  = document.getElementById('props-panel');
+  const cyEl        = document.getElementById('cy');
+  const legend      = document.getElementById('legend');
+  const controls    = document.getElementById('graph-controls');
+
+  // Reset visibility
+  emptyState.style.display   = 'none';
+  noDataState.style.display  = 'none';
+  propsPanel.style.display   = 'none';
+  cyEl.style.display         = 'block';
+  controls.style.display     = 'flex';
+
+  if (!focalNodeId) {
+    emptyState.style.display = 'flex';
+    cyEl.style.display = 'none';
+    controls.style.display = 'none';
+    legend.classList.remove('visible');
+    cy && cy.elements().remove();
+    return;
+  }
+
+  if (tab === 'properties') {
+    propsPanel.style.display = 'block';
+    cyEl.style.display = 'none';
+    controls.style.display = 'none';
+    legend.classList.remove('visible');
+    renderPropertiesPanel();
+    return;
+  }
+
+  const { elements, legend: legendItems } = buildElements(tab);
+  const neighborCount = elements.filter(e => !e.data.source && e.data.nodeId !== focalNodeId).length;
+
+  if (neighborCount === 0) {
+    noDataState.style.display = 'flex';
+    document.getElementById('no-data-msg').textContent =
+      `No ${tab} data found for this sequence.`;
+    cyEl.style.display = 'none';
+    controls.style.display = 'none';
+    legend.classList.remove('visible');
+    cy && cy.elements().remove();
+    return;
+  }
+
+  renderLegend(legendItems);
+  runLayout(elements, tab);
+}
+
+// ================================================================
+//  PROPERTIES PANEL
+// ================================================================
+function renderPropertiesPanel() {
+  const panel = document.getElementById('props-panel');
+  if (!focalNodeId || !nodesMap[focalNodeId]) { panel.innerHTML = ''; return; }
+
+  const { attrs: a } = nodesMap[focalNodeId];
+
+  const conf = parseFloat(a.confidence) || 0;
+  const label = a.experimental_label || 'unknown';
+
+  function labelCls(lbl) {
+    if (!lbl || lbl === 'unknown') return 'unknown';
+    const l = lbl.toLowerCase();
+    if (l.includes('non')) return 'non-amyloid';
+    if (l.includes('amyloid')) return 'amyloid';
+    return 'neutral';
+  }
+
+  function badge(val, cls) {
+    if (!val || val === '' || val === 'unknown' || val === '0') {
+      return `<span class="badge badge-unknown">${val || 'unknown'}</span>`;
+    }
+    return `<span class="badge badge-${cls || 'neutral'}">${val}</span>`;
+  }
+
+  const seq = a.sequence || '';
+  const regionInfo = [a.region_start, a.region_end].filter(Boolean).join('–');
+
+  panel.innerHTML = `
+    <div class="props-title">
+      ${seq ? seq.slice(0, 30) + (seq.length > 30 ? '…' : '') : 'Sequence'}
+      ${a.uniprot_id ? `<span class="uniprot-tag">${a.uniprot_id}</span>` : ''}
+      ${regionInfo ? `<span class="uniprot-tag" style="background:#f0fdf4;color:#15803d">aa ${regionInfo}</span>` : ''}
+    </div>
+    <div class="props-grid">
+      ${seq ? `
+      <div class="prop-card" style="grid-column:1/-1">
+        <h3>Full Sequence <span style="font-weight:400;text-transform:none;letter-spacing:0">(${a.sequence_length || seq.length} aa)</span></h3>
+        <div class="props-seq">${seq}</div>
+      </div>` : ''}
+
+      <div class="prop-card">
+        <h3>Amyloid Status</h3>
+        <div class="tag-row">${badge(label, labelCls(label))}</div>
+        <div style="margin-top:8px;font-size:12px;color:#64748b">
+          Evidence type: <strong>${a.evidence_type || '—'}</strong>
+        </div>
+      </div>
+
+      <div class="prop-card">
+        <h3>Confidence Score</h3>
+        <div style="font-size:26px;font-weight:700;color:#0D9488;line-height:1">${conf}%</div>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" style="width:${conf}%"></div></div>
+        </div>
+        <div style="margin-top:6px;font-size:12px;color:#64748b">Evidence weight: <strong>${a.evidence_weight || '—'}</strong></div>
+      </div>
+
+      <div class="prop-card">
+        <h3>Structure Classification</h3>
+        <div class="tag-row" style="margin-bottom:6px">
+          ${badge(a.secondary_structure_class)}
+          ${badge(a.structure_type)}
+        </div>
+        <div class="tag-row">
+          ${badge(a.aggregate_type)}
+          ${badge(a.fold_shape)}
+        </div>
+      </div>
+
+      <div class="prop-card">
+        <h3>Fibril Architecture</h3>
+        <div class="stat-row"><span class="stat-label">Interface type</span><span class="stat-value">${a.interface_type || '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Strand arrangement</span><span class="stat-value">${a.strand_arrangement || '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Fold topology</span><span class="stat-value">${a.fold_topology || '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Twist handedness</span><span class="stat-value">${a.twist_handedness || '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Protofilaments</span><span class="stat-value">${a.protofilament_count || '—'}</span></div>
+        ${a.zipper_class ? `<div class="stat-row"><span class="stat-label">Zipper class</span><span class="stat-value">${a.zipper_class}</span></div>` : ''}
+      </div>
+
+      <div class="prop-card">
+        <h3>Pathogenicity & Disease</h3>
+        <div class="tag-row" style="margin-bottom:8px">${badge(a.pathogenicity)}</div>
+        <div class="stat-row"><span class="stat-label">Disease</span><span class="stat-value">${a.disease || '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Mutation</span><span class="stat-value">${a.mutation || '—'}</span></div>
+        ${a.polymorph_name ? `<div class="stat-row"><span class="stat-label">Polymorph</span><span class="stat-value">${a.polymorph_name}</span></div>` : ''}
+      </div>
+
+      <div class="prop-card">
+        <h3>Evidence Summary</h3>
+        <div class="stat-row"><span class="stat-label">Observations</span><span class="stat-value">${a.n_observations ?? '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Sources</span><span class="stat-value">${a.n_sources ?? '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Methods</span><span class="stat-value">${a.n_methods ?? '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Labels</span><span class="stat-value">${a.n_labels ?? '—'}</span></div>
+        <div class="stat-row"><span class="stat-label">Publications</span><span class="stat-value">${a.n_publications ?? '—'}</span></div>
+      </div>
+
+      <div class="prop-card">
+        <h3>Consensus Scores</h3>
+        <div class="stat-row"><span class="stat-label">Support weight</span>
+          <span class="stat-value">${(+( a.consensus_support_weight || 0)).toFixed(2)}</span></div>
+        <div class="stat-row"><span class="stat-label">Opposing weight</span>
+          <span class="stat-value">${(+(a.opposing_support_weight || 0)).toFixed(2)}</span></div>
+        <div class="stat-row"><span class="stat-label">Conflict score</span>
+          <span class="stat-value">${(+(a.conflict_score || 0)).toFixed(3)}</span></div>
+        <div class="stat-row"><span class="stat-label">Confidence margin</span>
+          <span class="stat-value">${(+(a.confidence_margin || 0)).toFixed(2)}</span></div>
+        <div class="stat-row"><span class="stat-label">Norm. margin</span>
+          <span class="stat-value">${(+(a.normalized_margin || 0)).toFixed(3)}</span></div>
+        <div class="stat-row"><span class="stat-label">Method diversity</span>
+          <span class="stat-value">${(+(a.method_diversity || 0)).toFixed(3)}</span></div>
+        <div class="stat-row"><span class="stat-label">Provenance richness</span>
+          <span class="stat-value">${(+(a.provenance_richness || 0)).toFixed(2)}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+// ================================================================
+//  SIDEBAR
+// ================================================================
+function showSidebar(nodeId) {
+  const node = nodesMap[nodeId];
+  if (!node) return;
+
+  document.getElementById('sidebar-title').textContent = node.node_type;
+  document.getElementById('sidebar').classList.remove('hidden');
+
+  const skip = new Set(['graph_layer']);
+  const rows = Object.entries(node.attrs)
+    .filter(([k, v]) => !skip.has(k) && v !== '' && v !== null && v !== undefined)
+    .map(([k, v]) => {
+      const mono = k === 'sequence' || k === 'doi' || k === 'record_id';
+      return `<div class="kv-row">
+        <div class="kv-key">${k.replace(/_/g, ' ')}</div>
+        <div class="kv-val${mono ? ' mono' : ''}">${v}</div>
+      </div>`;
+    }).join('');
+
+  document.getElementById('sidebar-body').innerHTML =
+    rows || '<p style="color:#94a3b8;font-size:13px;padding:8px 0">No attributes.</p>';
+}
+
+function hideSidebar() {
+  document.getElementById('sidebar').classList.add('hidden');
+}
+
+// ================================================================
+//  AUTOCOMPLETE / SEARCH
+// ================================================================
+let acResults = [];
+let acIndex   = -1;
+
+function doSearch(q) {
+  if (!q || q.length < 2) return [];
+  const ql = q.toLowerCase();
+  return seqIndex
+    .filter(item =>
+      item.sequence.toLowerCase().includes(ql) ||
+      item.uniprot_id.toLowerCase().includes(ql) ||
+      item.protein_name.toLowerCase().includes(ql)
+    )
+    .slice(0, 10);
+}
+
+function renderAutocomplete(results) {
+  const ac = document.getElementById('autocomplete');
+  acResults = results;
+  acIndex   = -1;
+
+  if (!results.length) { ac.style.display = 'none'; return; }
+
+  ac.innerHTML = results.map((item, i) => {
+    const primaryLabel = item.display.length > 36 ? item.display.slice(0, 34) + '…' : item.display;
+    const meta = item.uniprot_id || item.protein_name || '';
+    return `<div class="ac-item" data-i="${i}">
+      <span class="ac-seq">${primaryLabel || '(no label)'}</span>
+      ${meta ? `<span class="ac-meta">${meta}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  ac.style.display = 'block';
+  ac.querySelectorAll('.ac-item').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      selectFocal(acResults[+el.dataset.i].id);
+    });
+  });
+}
+
+function hideAutocomplete() {
+  document.getElementById('autocomplete').style.display = 'none';
+}
+
+function selectFocal(nodeId) {
+  focalNodeId = nodeId;
+  const node = nodesMap[nodeId];
+  const seq = node?.attrs?.sequence || '';
+  const displayName = node?.attrs?.name || node?.attrs?.protein_name || node?.attrs?.uniprot_id || seq;
+  document.getElementById('search-input').value = displayName || nodeId;
+
+  const badge = document.getElementById('focal-badge');
+  const badgeText = displayName.length > 40 ? displayName.slice(0, 38) + '…' : displayName;
+  badge.textContent = badgeText;
+  badge.style.display = 'block';
+
+  hideAutocomplete();
+  hideSidebar();
+  renderTab(currentTab);
+}
+
+// ================================================================
+//  EVENT BINDING
+// ================================================================
+function bindEvents() {
+  const input = document.getElementById('search-input');
+
+  input.addEventListener('input', () => {
+    renderAutocomplete(doSearch(input.value));
+  });
+
+  input.addEventListener('keydown', e => {
+    const items = document.querySelectorAll('.ac-item');
+    if (!items.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      acIndex = Math.min(acIndex + 1, items.length - 1);
+      items.forEach((el, i) => el.classList.toggle('active', i === acIndex));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      acIndex = Math.max(acIndex - 1, 0);
+      items.forEach((el, i) => el.classList.toggle('active', i === acIndex));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (acIndex >= 0 && acResults[acIndex]) selectFocal(acResults[acIndex].id);
+    } else if (e.key === 'Escape') {
+      hideAutocomplete();
+    }
+  });
+
+  input.addEventListener('blur', () => setTimeout(hideAutocomplete, 160));
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => renderTab(btn.dataset.tab));
+  });
+
+  document.getElementById('sidebar-close').addEventListener('click', hideSidebar);
+}
+
+// ================================================================
+//  BOOTSTRAP
+// ================================================================
+async function init() {
+  try {
+    await loadData();
+    initCy();
+    bindEvents();
+
+    document.getElementById('loading').style.display = 'none';
+    const input = document.getElementById('search-input');
+    input.disabled = false;
+    input.focus();
+
+    // Show initial empty state
+    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('cy').style.display = 'none';
+    document.getElementById('graph-controls').style.display = 'none';
+
+  } catch (err) {
+    document.getElementById('loading').innerHTML = `
+      <div style="color:#f87171;text-align:center;padding:40px;max-width:400px">
+        <p style="font-size:16px;margin-bottom:8px">Failed to load data</p>
+        <p style="font-size:13px;color:#64748b">${err.message}</p>
+        <p style="font-size:12px;color:#475569;margin-top:12px">Make sure graph_nodes.csv and graph_edges.csv are in the same directory as this file, and that you are serving it via a local web server (not file://).</p>
+      </div>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
